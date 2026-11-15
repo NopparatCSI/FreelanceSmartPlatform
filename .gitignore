@@ -4,3 +4,6 @@ artifacts/
 cache/
 .env
 .local/
+.env.*
+!/.env.example
+/dist-pages/

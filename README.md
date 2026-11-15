@@ -2,6 +2,14 @@
 
 Smart Contract บน Ethereum สำหรับสร้างข้อตกลง ฝาก ETH ส่งหลักฐาน อนุมัติจ่าย และจัดการข้อพิพาท หน้าเว็บแสดงเหตุการณ์บนเชนพร้อมวันเวลา เลข Block และ Transaction Hash ที่คัดลอกได้
 
+## เผยแพร่เว็บบน GitHub Pages
+
+1. เปิด **Settings → Pages** ของ repository แล้วเลือก **Build and deployment → Source → GitHub Actions**
+2. Commit และ push ไฟล์ workflow พร้อมโค้ดไปที่ `master` หรือเปิด **Actions → Deploy Escrow to GitHub Pages → Run workflow** หากไฟล์อยู่บน `master` แล้ว
+3. เมื่อ job `deploy` ผ่าน เปิด URL ที่แสดงใน **Settings → Pages** หรือในผลของ workflow สำหรับ repository นี้คือ [FreelanceSmartPlatform](https://nopparatcsi.github.io/FreelanceSmartPlatform/)
+
+`npm run build:pages` สร้างไฟล์ใน `dist-pages/` จากโค้ดหน้าเว็บและ `deployments/sepolia.json` หน้าเว็บที่เผยแพร่อ่าน Sepolia ผ่าน PublicNode และให้ MetaMask ลงนามด้วยบัญชีของผู้ใช้ ระบบใช้สัญญาที่บันทึกไว้ใน manifest การเผยแพร่หน้าเว็บจึงใช้ประวัติงานเดิมต่อได้
+
 ## เปิดระบบบน Windows
 
 ใช้ Node.js 20 ขึ้นไป เปิด PowerShell แล้วรัน
@@ -87,7 +95,7 @@ npm.cmd start
 
 คำสั่ง Deploy จะบันทึก Address, ABI, Deployment Transaction Hash, Block Number, Block Hash และบทบาทใน `deployments/sepolia.json` หากรอ Receipt ไม่เสร็จแต่มีรายการ Pending ให้ตรวจ Hash เดิมก่อน ใช้ `node scripts/deploy-sepolia.cjs --finalize` เพื่อรอและบันทึก Receipt ต่อโดยไม่ส่งธุรกรรมซ้ำ
 
-`npm.cmd start` ตรวจ Receipt, Block Hash, bytecode และผู้ตัดสินจากเครือข่าย แล้วเปิดเว็บด้วย Contract เดิม ต้องตั้ง `SEPOLIA_RPC_URL` แต่ไม่ต้องมีคีย์ Deploy เปิด MetaMask บน Sepolia ให้ตรงกับหน้าเว็บ และเลือกบัญชีผู้ว่าจ้างที่มี Sepolia ETH สำหรับค่า Gas หลังสร้างข้อตกลง ตรวจ Receipt Status = 1 กับ Event `JobCreated` แล้วปิดและเปิดเว็บอีกครั้ง เลือกงานเดิมและตรวจ Transaction Hash เดิม
+`npm.cmd start` ตรวจ Receipt, Block Hash, bytecode และผู้ตัดสินจากเครือข่าย แล้วเปิดเว็บด้วย Contract เดิม ใช้ PublicNode เป็นค่าเริ่มต้นและกำหนด `SEPOLIA_RPC_URL` เพื่อเปลี่ยนผู้ให้บริการได้ เปิด MetaMask บน Sepolia ให้ตรงกับหน้าเว็บ และเลือกบัญชีผู้ว่าจ้างที่มี Sepolia ETH สำหรับค่า Gas หลังสร้างข้อตกลง ตรวจ Receipt Status = 1 กับ Event `JobCreated` แล้วปิดและเปิดเว็บอีกครั้ง เลือกงานเดิมและตรวจ Transaction Hash เดิม
 
 ## ตรวจ Build และเก็บข้อผิดพลาด
 

@@ -12,7 +12,8 @@
     "start:local": "node scripts/hardhat.cjs --local run scripts/serve.cjs",
     "check:sepolia-roles": "node scripts/deploy-sepolia.cjs --check-roles",
     "deploy:sepolia": "npm run compile && node scripts/deploy-sepolia.cjs",
-    "setup:sepolia": "npm run compile && node scripts/serve.cjs --setup"
+    "setup:sepolia": "npm run compile && node scripts/serve.cjs --setup",
+    "build:pages": "node scripts/build-pages.cjs"
   },
   "dependencies": {
     "@nomicfoundation/hardhat-ethers": "3.0.8",

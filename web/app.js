@@ -609,7 +609,7 @@ async function init() {
       } catch { button.textContent = "เลือกและคัดลอกข้อความด้านบน"; }
     });
   }
-  const provider = new JsonRpcProvider(rpcUrl, config.chainId, { batchMaxCount: 1, cacheTimeout: -1 });
+  const provider = new JsonRpcProvider(config.readRpcUrl || rpcUrl, config.chainId, { batchMaxCount: 1, cacheTimeout: -1 });
   reader = new Contract(config.address, config.abi, provider);
   if (config.mode === "demo") {
     useDemo();
