@@ -1,0 +1,26 @@
+{
+  "name": "digitalwork-escrow",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "compile": "node scripts/hardhat.cjs compile",
+    "test": "node scripts/hardhat.cjs test",
+    "start": "node scripts/serve.cjs",
+    "test:web": "node --test checks/browser.cjs",
+    "start:demo": "node scripts/hardhat.cjs --demo run scripts/serve.cjs",
+    "test:wallet": "node --test checks/wallet.cjs",
+    "start:local": "node scripts/hardhat.cjs --local run scripts/serve.cjs",
+    "check:sepolia-roles": "node scripts/deploy-sepolia.cjs --check-roles",
+    "deploy:sepolia": "npm run compile && node scripts/deploy-sepolia.cjs",
+    "setup:sepolia": "npm run compile && node scripts/serve.cjs --setup"
+  },
+  "dependencies": {
+    "@nomicfoundation/hardhat-ethers": "3.0.8",
+    "ethers": "6.15.0",
+    "hardhat": "2.26.3",
+    "solc": "0.8.30"
+  },
+  "devDependencies": {
+    "playwright-core": "1.56.1"
+  }
+}

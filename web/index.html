@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DigitalWork · Freelance Escrow</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <a class="skip" href="#jobs-title">ข้ามไปยังรายการงาน</a>
+  <header class="topbar">
+    <div class="shell topbar-content">
+      <a class="brand" href="/" aria-label="DigitalWork หน้าแรก">
+        <span class="mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span>DigitalWork<span class="brand-sub">ESCROW WORKSPACE</span></span>
+      </a>
+      <span class="network"><span class="dot"></span><span id="network-label">กำลังตรวจเครือข่าย…</span></span>
+    </div>
+  </header>
+
+  <main class="shell">
+    <section class="intro" aria-labelledby="heading">
+      <div>
+        <p class="eyebrow">DIGITALWORK / ESCROW</p>
+        <h1 id="heading">Freelance Escrow<span>.</span></h1>
+        <p class="lead">จัดการข้อตกลง พักค่าจ้าง และติดตามการชำระเงินในที่เดียว</p>
+      </div>
+      <div class="intro-art" aria-hidden="true"><i></i><i></i><i></i></div>
+    </section>
+
+    <p class="scope" id="scope">กำลังตรวจเครือข่ายและเวอร์ชัน…</p>
+
+    <section class="metrics" aria-label="ภาพรวมงาน">
+      <div class="metric"><span>งานทั้งหมด</span><strong id="job-count">—</strong></div>
+      <div class="metric"><span>ยอดพักใน Escrow</span><strong id="locked">—</strong></div>
+      <div class="metric"><span>ข้อพิพาทที่รอตัดสิน</span><strong id="disputed">—</strong></div>
+    </section>
+
+    <section class="wallet panel" aria-labelledby="wallet-title">
+      <div><h2 id="wallet-title">Wallet ที่ใช้งาน</h2><p id="wallet-role" class="muted" hidden></p><p id="wallet-address" class="mono muted">กำลังเชื่อมต่อเครือข่าย…</p></div>
+      <div class="wallet-controls">
+        <label class="sr-only" for="role">บัญชีสาธิต</label>
+        <select id="role" hidden disabled>
+          <option value="client">สาธิต · ผู้ว่าจ้าง</option>
+          <option value="freelancer">สาธิต · ฟรีแลนซ์</option>
+          <option value="arbiter">สาธิต · ผู้ตัดสิน</option>
+        </select>
+        <button id="connect" type="button" class="secondary" disabled>เชื่อม Wallet</button>
+      </div>
+    </section>
+
+    <p id="feedback" role="status" aria-live="polite"></p>
+    <details id="rpc-diagnostics" hidden><summary>รายละเอียดข้อผิดพลาด RPC</summary><pre></pre><button type="button">คัดลอกรายละเอียด RPC</button></details>
+
+    <dialog class="panel create" id="create-dialog" aria-labelledby="create-title" aria-describedby="create-hint">
+        <div class="row">
+          <h2 id="create-title">สร้างข้อตกลง</h2>
+          <button id="close-create" type="button" class="secondary">ปิด</button>
+        </div>
+        <p class="muted" id="create-hint">ระบุคู่สัญญา ค่าจ้าง และกำหนดส่งก่อนฝากเงิน</p>
+        <form id="create-form">
+          <p id="create-feedback" class="inline-feedback" role="status"></p>
+          <details id="create-diagnostics" hidden><summary>รายละเอียดข้อผิดพลาด RPC</summary><pre></pre><button type="button">คัดลอกรายละเอียด RPC</button></details>
+          <fieldset id="create-fields" disabled>
+            <label>ชื่อโครงการ<input name="title" autofocus required maxlength="240"></label>
+            <label>รายละเอียดงาน<textarea name="details" rows="3" required maxlength="2400"></textarea></label>
+            <label>Wallet ฟรีแลนซ์<input name="freelancer" class="mono" required placeholder="0x…" autocomplete="off" spellcheck="false"></label>
+            <button id="demo-address" type="button" hidden class="text-button">ใช้ Wallet ฟรีแลนซ์สาธิต</button>
+            <div class="form-grid">
+              <label>ค่าจ้าง (ETH)<input name="fee" required inputmode="decimal" placeholder="0.50"></label>
+              <label>กำหนดส่ง (เวลาเครื่อง)<input name="deadline" type="datetime-local" required></label>
+            </div>
+            <small class="muted">ข้อมูลที่กรอกจะมองเห็นได้บนเครือข่าย</small>
+            <button class="primary" type="submit">สร้างข้อตกลง</button>
+          </fieldset>
+        </form>
+    </dialog>
+
+    <section class="workspace-header row" aria-labelledby="jobs-title">
+      <div>
+        <h2 id="jobs-title" tabindex="-1">พื้นที่จัดการงาน</h2>
+        <p class="muted">เลือกงานเพื่อดูขั้นตอนถัดไป หลักฐาน และประวัติธุรกรรม</p>
+      </div>
+      <button id="open-create" class="primary" type="button" disabled><span aria-hidden="true">＋</span> สร้างข้อตกลงใหม่</button>
+    </section>
+    <div class="workspace">
+      <section class="panel jobs-panel" aria-labelledby="list-title">
+        <div class="row"><h3 id="list-title">รายการงาน</h3><button id="refresh" type="button" class="secondary" disabled>รีเฟรช</button></div>
+        <label class="job-filter">สถานะงาน
+          <select id="job-filter">
+            <option value="all">ทุกสถานะ</option>
+            <option value="0">รอฝากเงิน</option>
+            <option value="1">พักเงินแล้ว</option>
+            <option value="2">ส่งงานแล้ว</option>
+            <option value="3">มีข้อพิพาท</option>
+            <option value="4">จ่ายแล้ว</option>
+            <option value="5">คืนเงินแล้ว</option>
+          </select>
+        </label>
+        <div id="job-list" class="job-list"><p class="empty">กำลังโหลดรายการงาน…</p></div>
+      </section>
+      <section id="job-detail" class="panel detail" aria-label="รายละเอียดงาน" hidden></section>
+      <section id="job-guide" class="panel guide" aria-labelledby="guide-title">
+        <div class="guide-mark" aria-hidden="true"><i></i><i></i><i></i></div>
+        <h3 id="guide-title">ขั้นตอนการจ้างงาน</h3>
+        <ol class="guide-steps">
+          <li><strong>สร้างข้อตกลง</strong><span>ผู้ว่าจ้างระบุงานและค่าจ้าง</span></li>
+          <li><strong>ฝากเงิน</strong><span>พัก ETH ไว้ใน Escrow</span></li>
+          <li><strong>ส่งผลงาน</strong><span>ฟรีแลนซ์บันทึกหลักฐาน</span></li>
+          <li><strong>ตรวจและจ่าย</strong><span>ผู้ว่าจ้างอนุมัติการจ่าย</span></li>
+        </ol>
+      </section>
+    </div>
+    <footer><span>DigitalWork Escrow</span><span id="build-version" class="mono">Build __ESCROW_BUILD_ID__</span><span id="contract-address" class="mono"></span></footer>
+  </main>
+</body>
+</html>

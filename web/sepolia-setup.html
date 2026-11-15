@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ตั้งค่า Sepolia | DigitalWork Escrow</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/sepolia-setup.js"></script>
+</head>
+<body>
+  <main class="shell">
+    <section class="intro">
+      <p class="eyebrow">DIGITALWORK / ESCROW</p>
+      <h1>ตั้งค่า Sepolia</h1>
+      <p class="lead">ตรวจ Wallet ทั้งสามบทบาทก่อน Deploy สัญญาทดสอบ</p>
+    </section>
+    <p class="scope">Sepolia Testnet · Chain ID 11155111</p>
+    <section class="panel">
+      <h2>บัญชีทดสอบ</h2>
+      <dl class="job-data" id="roles"></dl>
+      <p class="muted">ใช้ Wallet ผู้ว่าจ้างหรือฟรีแลนซ์จ่ายค่า Gas สำหรับ Deploy จากนั้นแต่ละบัญชีทำงานตามบทบาทด้านบน</p>
+      <div class="actions">
+        <button id="deploy" type="button" class="primary" disabled>Deploy ผ่าน MetaMask</button>
+      </div>
+      <p id="feedback" role="status" aria-live="polite">กำลังตรวจแผน Deploy…</p>
+      <p><a id="transaction" hidden target="_blank" rel="noopener noreferrer">ดูธุรกรรมบน Sepolia Etherscan</a></p>
+      <form id="recover">
+        <label>บันทึกธุรกรรม Deploy ที่ส่งไปแล้ว
+          <input id="hash" class="mono" required pattern="0x[0-9A-Fa-f]{64}" placeholder="Transaction Hash">
+        </label>
+        <button class="secondary" type="submit" id="register" disabled>ตรวจ Receipt</button>
+      </form>
+    </section>
+  </main>
+</body>
+</html>

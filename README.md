@@ -1,0 +1,105 @@
+# DigitalWork Freelance Escrow
+
+Smart Contract บน Ethereum สำหรับสร้างข้อตกลง ฝาก ETH ส่งหลักฐาน อนุมัติจ่าย และจัดการข้อพิพาท หน้าเว็บแสดงเหตุการณ์บนเชนพร้อมวันเวลา เลข Block และ Transaction Hash ที่คัดลอกได้
+
+## เปิดระบบบน Windows
+
+ใช้ Node.js 20 ขึ้นไป เปิด PowerShell แล้วรัน
+
+```powershell
+Set-Location -LiteralPath 'D:\csi301\assi8'
+npm.cmd ci
+npm.cmd run start:demo
+```
+
+เปิด URL ที่เทอร์มินัลพิมพ์ ค่าเริ่มต้นคือ [http://127.0.0.1:8787/](http://127.0.0.1:8787/) หากพอร์ตถูกใช้งาน ให้กำหนด `$env:PORT = '8790'` ก่อนรัน
+
+| คำสั่ง | ผู้ลงนาม |
+| --- | --- |
+| `npm.cmd run start:demo` | เลือกบัญชีสาธิตบนหน้าเว็บ เซิร์ฟเวอร์ส่งธุรกรรมแทนบัญชี Hardhat ทั้งสามและจำกัดปลายทางเป็น Escrow |
+| `npm.cmd run start:local` | แต่ละฝ่ายลงนามใน Wallet Extension บน Hardhat Local |
+| `npm.cmd start` | แต่ละฝ่ายลงนามใน Wallet Extension บน Sepolia ที่ Deploy ไว้แล้ว |
+
+คำสั่ง `start:demo` และ `start:local` รัน **Hardhat Ethereum Local (Chain ID 31337)** ด้วย ETH จำลอง เก็บสถานะในหน่วยความจำ และ Deploy Contract ใหม่เมื่อเริ่มเซิร์ฟเวอร์ งานและประวัติของรอบก่อนจึงหายไป ในโหมด Wallet สามารถกำหนด `ESCROW_ARBITER` เป็นที่อยู่ผู้ตัดสินก่อนเปิดเซิร์ฟเวอร์ได้ ค่าเริ่มต้นใช้บัญชี Hardhat ลำดับที่สาม
+
+## ลำดับนำเสนอ
+
+1. เริ่มด้วยการบอกว่าเดโมใช้ Ethereum Local และข้อมูลรีเซ็ตเมื่อเริ่มเซิร์ฟเวอร์ใหม่
+2. สลับเป็นผู้ว่าจ้าง สร้างข้อตกลงโดยใช้ Wallet ฟรีแลนซ์สาธิต ตั้งค่าจ้าง 0.5 ETH และกำหนดส่งในอนาคต จากนั้นฝาก ETH
+3. สลับเป็นฟรีแลนซ์และบันทึก URL หรือ Hash ผลงาน สลับกลับเป็นผู้ว่าจ้างเพื่ออนุมัติและจ่าย เปิดประวัติเพื่อดูเวลาและคัดลอก Hash
+4. สร้างและฝาก ETH ให้อีกงาน ให้คู่สัญญาฝ่ายหนึ่งเปิดข้อพิพาท อีกฝ่ายกดส่งหลักฐานเพิ่มเติม จากนั้นให้ผู้ตัดสินกรอกเหตุผลและเลือกจ่ายหรือคืน ทดลองอีกครั้งเพื่อให้เห็นผลทั้งสองแบบ
+
+## ทดสอบด้วย MetaMask
+
+ใช้โปรไฟล์เบราว์เซอร์สำหรับทดสอบและบัญชี Hardhat หรือบัญชีที่เติม ETH จำลองแล้ว เปิดด้วย `npm.cmd run start:local` กด **เชื่อม Wallet** และอนุมัติใน MetaMask หากต้องเพิ่มเครือข่ายเอง ให้ใช้ Chain ID `31337`, สกุลเงิน `ETH` และ RPC URL ของเซิร์ฟเวอร์ เช่น `http://127.0.0.1:8787/rpc` ทำรายการผ่านหน้าเว็บและยืนยันใน MetaMask เมื่อเชื่อมต่อ หน้าเว็บตรวจทั้ง Chain ID และ Hash ของ Block ที่ Deploy เพื่อหลีกเลี่ยงการส่งไปยัง Hardhat อีกตัวที่ใช้ Chain ID เดียวกัน [คู่มือเพิ่มเครือข่ายใน MetaMask](https://support.metamask.io/configure/networks/how-to-add-a-custom-network-rpc/)
+
+## รันชุดทดสอบ
+
+```powershell
+npm.cmd test
+```
+
+เปิดเซิร์ฟเวอร์ด้วย `npm.cmd run start:demo` ในเทอร์มินัลหนึ่ง แล้วรันจากโฟลเดอร์โครงการในอีกเทอร์มินัล
+
+```powershell
+New-Item -ItemType Directory -Force -Path '.local' | Out-Null
+$env:PLAYWRIGHT_BROWSERS_PATH = Join-Path (Get-Location).Path '.local\browsers'
+$env:TEMP = Join-Path (Get-Location).Path '.local'
+$env:TMP = $env:TEMP
+node node_modules/playwright-core/cli.js install chromium --only-shell
+$env:CHECK_SCREENSHOTS = '1'
+npm.cmd run test:web
+```
+
+ใช้เดโมที่เพิ่งเริ่มเพื่อให้เทสต์ตรวจการอัปเดตจากรายการว่างในอีกแท็บได้ ตั้ง `DEMO_URL` หากใช้พอร์ตอื่น แล้วดูภาพใน `evidence` รายละเอียดข้อจำกัดและผลทดสอบอยู่ใน [รายงานโครงการ](REPORT.md)
+สำหรับการทดสอบโหมด Wallet อัตโนมัติ ให้เปิด `npm.cmd run start:local` แล้วรัน `npm.cmd run test:wallet` ในอีกเทอร์มินัล ตั้ง `WALLET_URL` หากใช้พอร์ตอื่น ชุดทดสอบจำลองตัวเชื่อม Wallet ตาม EIP-1193 ใช้บัญชี Hardhat ลงนามจริงในเชนจำลอง และตรวจว่าการปฏิเสธใน Wallet ไม่สร้างธุรกรรม
+## Deploy และเปิดเว็บบน Sepolia
+
+สำหรับ Deploy ด้วย MetaMask ให้เปิด PowerShell ในโฟลเดอร์โครงการ
+
+```powershell
+$env:SEPOLIA_ARBITER = '0x99eE1CB12249E5013c0c5CC090d333e75B53858E'
+$env:PORT = '8799'
+npm.cmd run setup:sepolia
+```
+
+เปิด [หน้าตั้งค่า Sepolia](http://127.0.0.1:8799/) ในเบราว์เซอร์ที่มี MetaMask ตรวจที่อยู่ทั้งสาม แล้วใช้ Account 1 หรือ Account 2 กด **Deploy ผ่าน MetaMask** และยืนยันเมื่อหน้าต่างแสดง Sepolia (11155111) เมื่อได้ Receipt ที่ยืนยันแล้วสองบล็อก ระบบบันทึกสัญญาและเปิดหน้า Escrow บน URL เดิม หากปิดหน้าก่อนสำเร็จ เปิด URL นี้แล้วใช้ Transaction Hash เดิมกับ **ตรวจ Receipt** เมื่อเปิดใหม่ด้วย `npm.cmd start` ให้ใช้ manifest เดิมเพื่อรักษางานและประวัติ
+
+เซิร์ฟเวอร์อ่าน Sepolia ผ่าน PublicNode เป็นค่าเริ่มต้น สามารถกำหนด `SEPOLIA_RPC_URL` ให้ใช้ HTTPS RPC อื่นได้ งานจาก Local อยู่บนคนละเชน ให้สร้างงานทดสอบใหม่บน Sepolia โดย Account 1 สร้างและฝาก Account 2 ส่งงาน แล้วกลับไป Account 1 เพื่ออนุมัติ ส่วน Account 3 ใช้เมื่อทดสอบข้อพิพาท
+
+### Deploy ด้วยสคริปต์ CLI
+
+ผู้ว่าจ้างและฟรีแลนซ์ที่ยืนยันแล้วถูกกำหนดใน `scripts/sepolia.cjs` ผู้ตัดสินต้องเป็นบัญชีที่สาม ผู้ตัดสินแก้ไขไม่ได้หลัง Deploy ให้ตรวจตารางบทบาทก่อนเริ่ม
+
+```powershell
+$env:SEPOLIA_ARBITER = '<ที่อยู่ Wallet สาธารณะของผู้ตัดสิน>'
+npm.cmd run check:sepolia-roles
+```
+
+เมื่อทั้งสามบทบาทได้รับการยืนยัน ตั้งค่า `SEPOLIA_RPC_URL` ให้เป็น HTTPS RPC สำหรับ Sepolia (Chain ID `11155111`) และ `SEPOLIA_DEPLOYER_KEY` เป็นคีย์ของบัญชีทดสอบที่มี Sepolia ETH ในเซสชันเครื่องของผู้ Deploy เก็บคีย์ไว้ในเครื่องและอย่าใส่ในแชตหรือไฟล์โครงการ บัญชี Deploy เป็นผู้จ่ายค่า Gas และไม่กลายเป็นผู้ตัดสินโดยอัตโนมัติ
+
+```powershell
+$env:CONFIRM_SEPOLIA_ROLES = 'yes'
+npm.cmd run deploy:sepolia
+Remove-Item Env:SEPOLIA_DEPLOYER_KEY
+npm.cmd start
+```
+
+คำสั่ง Deploy จะบันทึก Address, ABI, Deployment Transaction Hash, Block Number, Block Hash และบทบาทใน `deployments/sepolia.json` หากรอ Receipt ไม่เสร็จแต่มีรายการ Pending ให้ตรวจ Hash เดิมก่อน ใช้ `node scripts/deploy-sepolia.cjs --finalize` เพื่อรอและบันทึก Receipt ต่อโดยไม่ส่งธุรกรรมซ้ำ
+
+`npm.cmd start` ตรวจ Receipt, Block Hash, bytecode และผู้ตัดสินจากเครือข่าย แล้วเปิดเว็บด้วย Contract เดิม ต้องตั้ง `SEPOLIA_RPC_URL` แต่ไม่ต้องมีคีย์ Deploy เปิด MetaMask บน Sepolia ให้ตรงกับหน้าเว็บ และเลือกบัญชีผู้ว่าจ้างที่มี Sepolia ETH สำหรับค่า Gas หลังสร้างข้อตกลง ตรวจ Receipt Status = 1 กับ Event `JobCreated` แล้วปิดและเปิดเว็บอีกครั้ง เลือกงานเดิมและตรวจ Transaction Hash เดิม
+
+## ตรวจ Build และเก็บข้อผิดพลาด
+
+เทียบ Build ที่ท้ายหน้าเว็บกับบรรทัดที่เทอร์มินัลพิมพ์ หรือตรวจ `/version` ของ URL เดียวกัน พอร์ต 8787 และพอร์ตอื่นเป็นคนละเซิร์ฟเวอร์ได้ หาก Build ไม่ตรงหรือเซิร์ฟเวอร์ไม่ระบุ Build ให้เปิด URL ตามเทอร์มินัลของเซิร์ฟเวอร์รุ่นใหม่แล้วรีเฟรช
+
+หาก MetaMask ล้มเหลว ให้เปิด **รายละเอียดข้อผิดพลาด RPC** ข้างข้อความแจ้งเตือน แล้วคัดลอกรายละเอียด ข้อมูลรวม RPC method, error code, message, revert data ที่ได้รับ, Chain ID, ผู้ส่ง และ Build ID ค่า `null` หมายถึงผู้ให้บริการไม่ได้ส่งค่านั้นหรือยังไม่ได้เรียก RPC ใน Local ให้ตรวจข้อความในเทอร์มินัลของเซิร์ฟเวอร์เพิ่มสำหรับคำขอประมาณ Gas หรือส่งธุรกรรมที่ RPC ปฏิเสธ
+ถ้าต้องทดสอบ MetaMask กับ Local ที่เติม ETH และมีข้อมูลไว้แล้ว ให้เปิดหน้าเว็บรุ่นใหม่โดยอ้างอิงเซิร์ฟเวอร์เดิม เก็บเซิร์ฟเวอร์ต้นทางให้ทำงานอยู่ และใช้ RPC ต้นทางเดิมใน MetaMask
+
+```powershell
+$env:LOCAL_ATTACH_URL = 'http://127.0.0.1:8787'
+$env:PORT = '8796'
+npm.cmd run start:local
+```
+
+เปิดหน้าเว็บพอร์ต 8796 แต่เลือกเครือข่ายที่ใช้ RPC `http://127.0.0.1:8787/rpc` ใน MetaMask เพื่อรักษายอดและประวัติบนเชน Local เดิม ทั้งสองพอร์ตมีหน้าที่คนละอย่าง
