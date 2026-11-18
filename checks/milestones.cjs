@@ -17,6 +17,8 @@ test("V2 browser accepts terms, revises versions, pays installments, and settles
   mkdirSync(local, { recursive: true });
   for (const key of ["TEMP", "TMP", "TMPDIR"]) process.env[key] = local;
   process.env.PLAYWRIGHT_BROWSERS_PATH ||= path.join(local, "browsers");
+  const evidence = path.resolve(__dirname, "../evidence");
+  if (process.env.CHECK_SCREENSHOTS === "1") mkdirSync(evidence, { recursive: true });
   const { chromium } = require("playwright-core");
   const browser = await chromium.launch();
   try {
@@ -115,7 +117,7 @@ test("V2 browser accepts terms, revises versions, pays installments, and settles
     assert.ok((await detail.getByRole("button", { name: /^อนุมัติและจ่ายงวด/ }).boundingBox()).y < 960,
       "The primary review action is visible in the desktop viewport");
     if (process.env.CHECK_SCREENSHOTS === "1") {
-      await page.screenshot({ path: path.join(local, "milestones-review-desktop.png"), fullPage: true });
+      await page.screenshot({ path: path.join(evidence, "10-v2-review.png"), fullPage: true });
     }
     await detail.locator("summary").filter({ hasText: "ผลงานยังไม่ครบ?" }).click();
     await detail.getByLabel("รายละเอียดที่ต้องแก้", { exact: true }).fill("แก้เมนูให้ตรงข้อตกลง");
@@ -137,6 +139,9 @@ test("V2 browser accepts terms, revises versions, pays installments, and settles
     await detail.getByRole("tab", { name: "ประวัติ", exact: true }).click();
     await detail.locator(".history").getByText(/v1-navigation/).waitFor();
     await detail.locator(".history").getByText(/v2-navigation-fixed/).waitFor();
+    if (process.env.CHECK_SCREENSHOTS === "1") {
+      await page.screenshot({ path: path.join(evidence, "11-v2-revision-history.png"), fullPage: true });
+    }
 
     await create("งานคืนเฉพาะยอดที่เหลือ");
     await submit(1);
@@ -147,6 +152,9 @@ test("V2 browser accepts terms, revises versions, pays installments, and settles
     assert.equal((await job()).escrowWei, 0n);
     assert.equal((await job()).status, 5n);
     assert.equal(await detail.locator(".milestone-card").getByText("คืนเงินแล้ว", { exact: true }).count(), 2);
+    if (process.env.CHECK_SCREENSHOTS === "1") {
+      await page.screenshot({ path: path.join(evidence, "12-v2-refund.png"), fullPage: true });
+    }
 
     await create("งานผู้ตัดสินสั่งจ่ายงวด");
     await dispute(true);
@@ -197,9 +205,9 @@ test("V2 browser accepts terms, revises versions, pays installments, and settles
     assert.equal(await page.locator("#create-dialog").isVisible(), false);
     assert.deepEqual(errors, []);
     if (process.env.CHECK_SCREENSHOTS === "1") {
-      await page.screenshot({ path: path.join(local, "milestones-mobile.png"), fullPage: true });
+      await page.screenshot({ path: path.join(evidence, "14-v2-mobile.png"), fullPage: true });
       await page.setViewportSize({ width: 1360, height: 960 });
-      await page.screenshot({ path: path.join(local, "milestones-desktop.png"), fullPage: true });
+      await page.screenshot({ path: path.join(evidence, "13-v2-completed.png"), fullPage: true });
     }
   } finally { await browser.close(); }
 });
