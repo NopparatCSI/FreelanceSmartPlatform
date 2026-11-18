@@ -5,6 +5,7 @@ const { createHash } = require("node:crypto");
 const ethers = require("ethers");
 const { loadDeployment, makeProvider } = require("./sepolia.cjs");
 const root = path.resolve(__dirname, "..");
+const { contractName, contractVersion } = require("./contract-version.cjs");
 
 const host = "127.0.0.1";
 const port = Number(process.env.PORT || 8787);
@@ -18,6 +19,7 @@ if (!["demo", "wallet", "sepolia"].includes(mode)) throw new Error("Use ESCROW_M
 const staticFiles = {
   "/": ["web/index.html", "text/html; charset=utf-8"],
   "/diagnostics.js": ["web/diagnostics.js", "text/javascript; charset=utf-8"],
+  "/milestones.js": ["web/milestones.js", "text/javascript; charset=utf-8"],
   "/app.js": ["web/app.js", "text/javascript; charset=utf-8"],
   "/styles.css": ["web/styles.css", "text/css; charset=utf-8"],
   "/ethers.js": ["node_modules/ethers/dist/ethers.min.js", "text/javascript; charset=utf-8"],
@@ -28,7 +30,7 @@ const readMethods = new Set([
   "eth_getBlockByNumber", "eth_getBlockByHash", "eth_getTransactionByHash", "eth_estimateGas",
   "eth_gasPrice", "eth_maxPriorityFeePerGas", "eth_feeHistory",
 ]);
-const parser = new ethers.Interface([
+const parserV1 = new ethers.Interface([
   "function createJob(address,uint256,uint64,string,string)",
   "function deposit(uint256) payable",
   "function submitWork(uint256,string)",
@@ -64,7 +66,7 @@ async function attachLocal(value) {
   const settings = await fetch(url.origin + "/config", { redirect: "error" });
   if (!settings.ok) throw new Error("Existing Local server did not return Contract configuration");
   const source = await settings.json();
-  if (source.chainId !== 31337 || !Array.isArray(source.abi)) {
+  if (source.chainId !== 31337 || (source.contractVersion ?? 1) !== contractVersion || !Array.isArray(source.abi)) {
     throw new Error("Existing server is not an Ethereum Local deployment");
   }
   const address = ethers.getAddress(source.address);
@@ -79,7 +81,7 @@ async function attachLocal(value) {
     }
     return { provider, config: {
       address, arbiter, abi: source.abi, deploymentBlock: source.deploymentBlock,
-      deploymentBlockHash: block.hash, chainId: 31337, networkName: "Ethereum Local", walletRpcUrl, mode,
+      deploymentBlockHash: block.hash, chainId: 31337, networkName: "Ethereum Local", walletRpcUrl, mode, contractVersion,
     } };
   } catch (error) {
     provider.destroy();
@@ -94,15 +96,15 @@ async function localDeployment() {
   const arbiterAddress = mode === "wallet" && process.env.ESCROW_ARBITER
     ? ethers.getAddress(process.env.ESCROW_ARBITER)
     : arbiter.address;
-  const escrow = await ethers.deployContract("FreelanceEscrow", [arbiterAddress]);
+  const escrow = await ethers.deployContract(contractName, [arbiterAddress]);
   const receipt = await escrow.deploymentTransaction().wait();
   const address = await escrow.getAddress();
-  const { abi } = await artifacts.readArtifact("FreelanceEscrow");
+  const { abi } = await artifacts.readArtifact(contractName);
   const accounts = { client: client.address, freelancer: freelancer.address, arbiter: arbiter.address };
   const config = {
     address, deploymentBlock: receipt.blockNumber, deploymentBlockHash: receipt.blockHash,
     abi, arbiter: arbiterAddress, chainId: 31337, networkName: "Ethereum Local",
-    mode, ...(mode === "demo" ? { accounts } : {}),
+    mode, contractVersion, ...(mode === "demo" ? { accounts } : {}),
   };
 
   return { config, provider: network.provider };
@@ -125,6 +127,7 @@ async function main() {
     throw error;
   }
   const { config } = chain;
+  const parser = config.contractVersion === 2 ? new ethers.Interface(config.abi) : parserV1;
   // Pin bytes for this server instance so a file edit cannot mix two builds.
   const files = new Map();
   const hash = createHash("sha256");
@@ -139,11 +142,12 @@ async function main() {
   const buildId = hash.digest("hex").slice(0, 16);
   config.buildId = buildId;
   const assetVersion = "?v=" + buildId;
-  for (const route of ["/", "/app.js"]) {
+  for (const route of ["/", "/app.js", "/milestones.js"]) {
     const entry = files.get(route);
     entry.bytes = Buffer.from(entry.bytes.toString()
       .replaceAll('"/app.js"', '"/app.js' + assetVersion + '"')
       .replaceAll('"/styles.css"', '"/styles.css' + assetVersion + '"')
+      .replaceAll('"/milestones.js"', '"/milestones.js' + assetVersion + '"')
       .replaceAll('"/diagnostics.js"', '"/diagnostics.js' + assetVersion + '"')
       .replaceAll('"/ethers.js"', '"/ethers.js' + assetVersion + '"')
       .replaceAll("__ESCROW_BUILD_ID__", buildId));
@@ -239,7 +243,7 @@ async function main() {
       if (request.method === "GET" && request.url === "/config") return sendJson(response, 200, config);
       if (request.method === "GET" && request.url === "/version") {
         return sendJson(response, 200, { buildId, mode, chainId: config.chainId, address: config.address,
-          deploymentBlockHash: config.deploymentBlockHash });
+          deploymentBlockHash: config.deploymentBlockHash, contractVersion: config.contractVersion });
       }
       const [route, query] = request.url.split("?", 2);
       const file = request.method === "GET" && files.get(route);

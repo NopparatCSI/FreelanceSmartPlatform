@@ -2,6 +2,7 @@ import {
   BrowserProvider, Contract, JsonRpcProvider, JsonRpcSigner, formatEther, getAddress, parseEther,
 } from "/ethers.js";
 import { readDiagnostic, trackWallet } from "/diagnostics.js";
+import { setupMilestoneForm, readMilestoneInputs, renderMilestones, describeMilestoneLog } from "/milestones.js";
 
 const $ = (id) => document.getElementById(id);
 const form = $("create-form");
@@ -10,6 +11,7 @@ const feedback = $("feedback");
 const detail = $("job-detail");
 const jobList = $("job-list");
 const jobFilter = $("job-filter");
+const jobSearch = $("job-search");
 const createDialog = $("create-dialog");
 const rpcUrl = location.origin + "/rpc";
 const buildId = "__ESCROW_BUILD_ID__";
@@ -18,6 +20,9 @@ let wallet;
 const statuses = ["รอฝากเงิน", "พักเงินแล้ว", "ส่งงานแล้ว", "มีข้อพิพาท", "จ่ายแล้ว", "คืนเงินแล้ว"];
 const statusClasses = ["created", "funded", "submitted", "disputed", "paid", "refunded"];
 const errorMessages = {
+  InvalidMilestones: "กำหนด 1–12 งวด และจำนวนรอบแก้ไม่เกิน 10 รอบ",
+  RevisionLimitReached: "ใช้จำนวนรอบแก้ของงวดนี้ครบแล้ว",
+  ReentrantCall: "ไม่สามารถเรียกจ่ายเงินซ้อนกันได้",
   UnknownJob: "ไม่พบงานนี้บนเครือข่ายปัจจุบัน หากเพิ่งรีสตาร์ตเซิร์ฟเวอร์ ให้รีเฟรชหน้าเว็บและสร้างงานใหม่",
   InvalidArbiter: "Wallet ผู้ตัดสินไม่ถูกต้อง",
   InvalidParties: "Wallet คู่สัญญาต้องต่างกันและต้องไม่ใช่ Wallet ผู้ตัดสิน",
@@ -32,12 +37,16 @@ const errorMessages = {
 };
 
 let config;
+let isV2 = false;
 let reader;
 let signer;
 let walletProvider;
 let account;
 let jobs = [];
 let selectedId = null;
+let detailTab = "work";
+let detailJobId;
+const disclosureState = new Map();
 let busy = false;
 let chainTime = 0;
 let lastBlockHash;
@@ -210,7 +219,8 @@ function renderControls() {
 }
 
 function shouldDeferRefresh() {
-  return busy || [...detail.querySelectorAll("textarea")].some((field) => field.value.trim() || field === document.activeElement);
+  return busy || [...detail.querySelectorAll("textarea, input")].some((field) =>
+    field === document.activeElement || field.tagName === "TEXTAREA" && field.value.trim());
 }
 
 function reload(auto = false) {
@@ -231,7 +241,10 @@ async function loadJobs(block, auto) {
   for (let start = 1n; start <= count; start += 25n) {
     const ids = [];
     for (let id = start; id <= count && id < start + 25n; id++) ids.push(id);
-    const batch = await Promise.all(ids.map(async (id) => ({ id, data: await reader.getJob(id, { blockTag }) })));
+    const batch = await Promise.all(ids.map(async (id) => ({
+      id, data: await reader.getJob(id, { blockTag }),
+      items: isV2 ? Array.from(await reader.getMilestones(id, { blockTag })) : null,
+    })));
     result.push(...batch);
   }
   if (auto && shouldDeferRefresh()) return;
@@ -248,9 +261,13 @@ async function loadJobs(block, auto) {
 
 function renderList() {
   jobList.replaceChildren();
-  const visibleJobs = jobs.filter(({ data }) => jobFilter.value === "all" || data.status.toString() === jobFilter.value);
+  const query = jobSearch.value.trim().toLocaleLowerCase();
+  const visibleJobs = jobs.filter(({ id, data }) =>
+    (jobFilter.value === "all" || data.status.toString() === jobFilter.value) &&
+    (!query || data.title.toLocaleLowerCase().includes(query) || ("#" + id).includes(query)));
+  $("list-count").textContent = visibleJobs.length + " จาก " + jobs.length + " งาน";
   if (!visibleJobs.length) {
-    jobList.append(node("p", jobs.length ? "ไม่พบงานในสถานะนี้" : "ยังไม่มีงาน สร้างข้อตกลงเพื่อเริ่มต้น", "empty"));
+    jobList.append(node("p", jobs.length ? "ไม่พบงาน ลองเปลี่ยนคำค้นหาหรือสถานะ" : "ยังไม่มีงาน สร้างข้อตกลงเพื่อเริ่มต้น", "empty"));
     return;
   }
   for (const { id, data } of visibleJobs) {
@@ -265,8 +282,7 @@ function renderList() {
       selectedId = id;
       renderList();
       renderDetail().catch(report);
-      if (window.matchMedia("(max-width: 790px)").matches) detail.querySelector("h2")?.focus();
-      else jobList.querySelector('[aria-pressed="true"]')?.focus();
+      if (!window.matchMedia("(max-width: 790px)").matches) jobList.querySelector('[aria-pressed="true"]')?.focus();
     });
     jobList.append(button);
   }
@@ -301,6 +317,10 @@ function textAction(label, buttonLabel, action) {
 }
 
 function describeLog(log) {
+  if (isV2) {
+    const result = describeMilestoneLog(log, money);
+    if (result) return result;
+  }
   switch (log.name) {
     case "JobCreated": return "สร้างข้อตกลง";
     case "Funded": return "ฝาก " + money(log.args.amount) + " เข้า Escrow";
@@ -315,19 +335,26 @@ function describeLog(log) {
 
 async function renderDetail() {
   const job = jobs.find(({ id }) => id === selectedId);
+  for (const item of detail.querySelectorAll("details[data-disclosure]")) {
+    disclosureState.set(detailJobId + ":" + item.dataset.disclosure, item.open);
+  }
   detail.replaceChildren();
   detail.hidden = !job;
   $("job-guide").hidden = Boolean(job);
-  if (!job) return;
+  detail.closest(".workspace").dataset.selected = String(Boolean(job));
+  if (!job) { detailJobId = null; return; }
 
   const { id, data } = job;
+  const selectionChanged = detailJobId !== id;
+  if (selectionChanged) detailTab = "work";
+  detailJobId = id;
   const status = Number(data.status);
   const isClient = sameAddress(account, data.client);
   const isFreelancer = sameAddress(account, data.freelancer);
   const isArbiter = sameAddress(account, config.arbiter);
   const now = Math.max(chainTime, Math.floor(Date.now() / 1000));
 
-  const title = node("div", undefined, "row");
+  const title = node("div", undefined, "row detail-header");
   const heading = node("h2", "#" + id + " · " + data.title);
   heading.tabIndex = -1;
   title.append(heading, badge(status));
@@ -351,86 +378,177 @@ async function renderDetail() {
     "โอนค่าจ้างให้ฟรีแลนซ์เรียบร้อย",
     "คืนค่าจ้างให้ผู้ว่าจ้างเรียบร้อย",
   ];
+  if (isV2) {
+    nextSteps[0] = "ฟรีแลนซ์ตรวจและยอมรับข้อตกลง";
+    nextSteps[1] = "ส่งผลงานตามงวดที่กำลังดำเนินการ";
+    nextSteps[2] = "ตรวจผลงานงวดนี้ แล้วอนุมัติหรือขอแก้";
+    nextSteps[5] = "คืนยอดที่เหลือและปิดงานแล้ว";
+    nextSteps[6] = "ผู้ว่าจ้างฝากค่าจ้างครบทุกงวด";
+    nextSteps[7] = "ฟรีแลนซ์แก้ผลงานและส่งเวอร์ชันใหม่";
+  }
   const nextStep = node("p", undefined, "next-step");
-  nextStep.append(node("strong", status < 4 ? "ขั้นตอนถัดไป" : "ผลการชำระเงิน"), node("span", nextSteps[status]));
-  detail.append(title, nextStep, node("p", data.details, "prewrap"), facts);
-  for (const [label, value] of [
-    ["หลักฐานส่งงาน", data.workProof],
-    ["หลักฐานผู้เปิดข้อพิพาท", data.disputeEvidence],
-    ["หลักฐานจากอีกฝ่าย", data.disputeResponse],
-    ["เหตุผลคำตัดสิน", data.rulingReason],
-  ]) {
-    if (value) detail.append(node("h3", label), node("p", value, "mono prewrap"));
+  nextStep.append(node("strong", status === 4 || status === 5 ? "ผลการชำระเงิน" : "ขั้นตอนถัดไป"), node("span", nextSteps[status]));
+  const summary = node("dl", undefined, "job-summary");
+  for (const [label, value] of [["ค่าจ้างรวม", money(data.feeWei)], ["เงินใน Escrow", money(data.escrowWei)],
+    [isV2 ? "จ่ายแล้ว" : "กำหนดส่ง", isV2 ? money(data.paidWei) : localDate(data.deadline)]]) {
+    const cell = node("div");
+    cell.append(node("dt", label), node("dd", value));
+    summary.append(cell);
   }
-
-  const actions = node("div", undefined, "actions");
-  if (status === 0 && isClient && now < Number(data.deadline)) {
-    actions.append(actionButton("ฝาก " + money(data.feeWei), () => transact(
-      (contract) => contract.deposit(id, { value: data.feeWei }),
-    )));
-  }
-  if (status === 1 && isFreelancer && now <= Number(data.deadline)) {
-    detail.append(textAction("URL หรือ Hash ผลงาน", "บันทึกส่งงาน",
-      (contract, proof) => contract.submitWork(id, proof),
-    ));
-  }
-  if (status === 2 && isClient) {
-    actions.append(actionButton("อนุมัติและจ่าย " + money(data.feeWei), () => {
-      if (window.confirm("ยืนยันโอน " + money(data.feeWei) + " ให้ฟรีแลนซ์?")) {
-        transact((contract) => contract.approveAndPay(id));
-      }
-    }));
-  }
-  if (status === 3 && isArbiter) {
-    const ruling = node("form", undefined, "action-form");
-    const label = node("label", "เหตุผลคำตัดสิน");
-    const reason = node("textarea");
-    reason.required = true;
-    reason.rows = 2;
-    reason.disabled = busy;
-    reason.maxLength = 1000;
-    label.append(reason);
-    const choices = node("div", undefined, "actions");
-    for (const [pay, title] of [[true, "จ่ายให้ฟรีแลนซ์"], [false, "คืนให้ผู้ว่าจ้าง"]]) {
-      const button = node("button", title, pay ? "primary" : "secondary danger");
-      button.type = "submit";
-      button.value = String(pay);
-      button.disabled = busy;
-      choices.append(button);
+  const tabList = node("div", undefined, "detail-tabs");
+  tabList.setAttribute("role", "tablist");
+  tabList.setAttribute("aria-label", "ส่วนรายละเอียดงาน");
+  const panels = new Map();
+  const work = node("section", undefined, "detail-content");
+  const agreement = node("section", undefined, "detail-content");
+  const historyPanel = node("section", undefined, "detail-content");
+  const tabNames = [["work", "ดำเนินงาน", work], ["agreement", "ข้อตกลง", agreement], ["history", "ประวัติ", historyPanel]];
+  let historyLoaded = false;
+  const activate = async (name) => {
+    detailTab = name;
+    for (const [key, { button, panel }] of panels) {
+      const active = name === key;
+      button.setAttribute("aria-selected", String(active));
+      button.tabIndex = active ? 0 : -1;
+      panel.hidden = !active;
     }
-    ruling.append(label, choices);
-    ruling.addEventListener("submit", (event) => {
+    if (name === "history" && !historyLoaded) {
+      historyLoaded = true;
+      await renderHistory(id, historyPanel);
+    }
+  };
+  for (const [name, label, panel] of tabNames) {
+    const button = actionButton(label, () => activate(name).catch(report), "tab-trigger");
+    button.id = "tab-" + id + "-" + name;
+    button.setAttribute("role", "tab");
+    button.setAttribute("aria-controls", "panel-" + id + "-" + name);
+    panel.id = "panel-" + id + "-" + name;
+    panel.setAttribute("role", "tabpanel");
+    panel.setAttribute("aria-labelledby", button.id);
+    panel.tabIndex = 0;
+    button.addEventListener("keydown", (event) => {
+      const keys = tabNames.map(([key]) => key);
+      let index = keys.indexOf(name);
+      if (event.key === "ArrowRight") index = (index + 1) % keys.length;
+      else if (event.key === "ArrowLeft") index = (index + keys.length - 1) % keys.length;
+      else if (event.key === "Home") index = 0;
+      else if (event.key === "End") index = keys.length - 1;
+      else return;
       event.preventDefault();
-      if (!event.submitter) return;
-      if (!window.confirm("ยืนยัน" + event.submitter.textContent + " " + money(data.escrowWei) + "?")) return;
-      const pay = event.submitter.value === "true";
-      transact((contract) => contract.resolveDispute(id, pay, limit(reason.value, 1000, "เหตุผลคำตัดสิน")));
+      panels.get(keys[index]).button.focus();
+      activate(keys[index]).catch(report);
     });
-    detail.append(ruling);
+    panels.set(name, { button, panel });
+    tabList.append(button);
   }
-  if (actions.children.length) detail.append(actions);
-  if ((status === 1 || status === 2) && (isClient || isFreelancer)) {
-    detail.append(textAction("เหตุผลหรือ Hash หลักฐาน", "เปิดข้อพิพาท",
-      (contract, evidence) => contract.openDispute(id, evidence),
-    ));
-  }
-  if (status === 3) {
-    if ((isClient || isFreelancer) && !sameAddress(account, data.disputeOpenedBy) && !data.disputeResponse) {
-      detail.append(textAction("หลักฐานจากอีกฝ่าย", "ส่งหลักฐานเพิ่มเติม",
-        (contract, evidence) => contract.submitDisputeResponse(id, evidence),
+  agreement.append(node("h3", "รายละเอียดข้อตกลง"), node("p", data.details, "prewrap"), facts);
+  work.append(nextStep);
+  const back = actionButton("← รายการงาน", () => {
+    selectedId = null;
+    renderList();
+    renderDetail().catch(report);
+    $("list-title").focus({ preventScroll: true });
+    $("list-title").scrollIntoView({ block: "start" });
+  }, "text-button mobile-back");
+  detail.append(back, title, summary, tabList, work, agreement, historyPanel);
+  if (isV2) {
+    renderMilestones({
+      id, data, items: job.items, detail: work, agreement, openAgreement: () => activate("agreement"), isClient, isFreelancer, isArbiter, account, sameAddress,
+      now, busy, node, money, localDate, actionButton, textAction, transact, limit,
+    });
+  } else {
+    for (const [label, value] of [
+      ["หลักฐานส่งงาน", data.workProof],
+      ["หลักฐานผู้เปิดข้อพิพาท", data.disputeEvidence],
+      ["หลักฐานจากอีกฝ่าย", data.disputeResponse],
+      ["เหตุผลคำตัดสิน", data.rulingReason],
+    ]) {
+      if (value) work.append(node("h3", label), node("p", value, "mono prewrap"));
+    }
+
+    const actions = node("div", undefined, "actions");
+    if (status === 0 && isClient && now < Number(data.deadline)) {
+      actions.append(actionButton("ฝาก " + money(data.feeWei), () => transact(
+        (contract) => contract.deposit(id, { value: data.feeWei }),
+      )));
+    }
+    if (status === 1 && isFreelancer && now <= Number(data.deadline)) {
+      work.append(textAction("URL หรือ Hash ผลงาน", "บันทึกส่งงาน",
+        (contract, proof) => contract.submitWork(id, proof),
       ));
     }
-    detail.append(node("p", "เงินจะพักอยู่จนกว่าผู้ตัดสินจะชี้ขาด ระบบไม่กำหนดเวลาตัดสินหรือเปลี่ยนผู้ตัดสิน", "muted"));
-  }
-  if ((status === 0 || status === 1) && now > Number(data.deadline)) {
-    detail.append(node("p", status === 1
-      ? "เลยกำหนดส่งแล้ว คู่สัญญาเปิดข้อพิพาทเพื่อขอให้ผู้ตัดสินชี้ขาดได้"
-      : "เลยกำหนดส่งแล้ว ข้อตกลงนี้ยังไม่มีเงินฝาก", "muted"));
-  }
+    if (status === 2 && isClient) {
+      actions.append(actionButton("อนุมัติและจ่าย " + money(data.feeWei), () => {
+        if (window.confirm("ยืนยันโอน " + money(data.feeWei) + " ให้ฟรีแลนซ์?")) {
+          transact((contract) => contract.approveAndPay(id));
+        }
+      }));
+    }
+    if (status === 3 && isArbiter) {
+      const ruling = node("form", undefined, "action-form");
+      const label = node("label", "เหตุผลคำตัดสิน");
+      const reason = node("textarea");
+      reason.required = true;
+      reason.rows = 2;
+      reason.disabled = busy;
+      reason.maxLength = 1000;
+      label.append(reason);
+      const choices = node("div", undefined, "actions");
+      for (const [pay, title] of [[true, "จ่ายให้ฟรีแลนซ์"], [false, "คืนให้ผู้ว่าจ้าง"]]) {
+        const button = node("button", title, pay ? "primary" : "secondary danger");
+        button.type = "submit";
+        button.value = String(pay);
+        button.disabled = busy;
+        choices.append(button);
+      }
+      ruling.append(label, choices);
+      ruling.addEventListener("submit", (event) => {
+        event.preventDefault();
+        if (!event.submitter) return;
+        if (!window.confirm("ยืนยัน" + event.submitter.textContent + " " + money(data.escrowWei) + "?")) return;
+        const pay = event.submitter.value === "true";
+        transact((contract) => contract.resolveDispute(id, pay, limit(reason.value, 1000, "เหตุผลคำตัดสิน")));
+      });
+      work.append(ruling);
+    }
+    if (actions.children.length) work.append(actions);
+    if ((status === 1 || status === 2) && (isClient || isFreelancer)) {
+      const dispute = node("details", undefined, "disclosure secondary-action");
+      dispute.dataset.disclosure = "dispute";
+      dispute.append(node("summary", "มีปัญหากับงาน? เปิดข้อพิพาท"), textAction("เหตุผลหรือ Hash หลักฐาน", "เปิดข้อพิพาท",
+        (contract, evidence) => contract.openDispute(id, evidence)));
+      work.append(dispute);
+    }
+    if (status === 3) {
+      if ((isClient || isFreelancer) && !sameAddress(account, data.disputeOpenedBy) && !data.disputeResponse) {
+        work.append(textAction("หลักฐานจากอีกฝ่าย", "ส่งหลักฐานเพิ่มเติม",
+          (contract, evidence) => contract.submitDisputeResponse(id, evidence),
+        ));
+      }
+      work.append(node("p", "เงินจะพักอยู่จนกว่าผู้ตัดสินจะชี้ขาด ระบบไม่กำหนดเวลาตัดสินหรือเปลี่ยนผู้ตัดสิน", "muted"));
+    }
+    if ((status === 0 || status === 1) && now > Number(data.deadline)) {
+      work.append(node("p", status === 1
+        ? "เลยกำหนดส่งแล้ว คู่สัญญาเปิดข้อพิพาทเพื่อขอให้ผู้ตัดสินชี้ขาดได้"
+        : "เลยกำหนดส่งแล้ว ข้อตกลงนี้ยังไม่มีเงินฝาก", "muted"));
+    }
 
+  }
+  for (const item of detail.querySelectorAll("details[data-disclosure]")) {
+    const saved = disclosureState.get(id + ":" + item.dataset.disclosure);
+    if (saved !== undefined) item.open = saved;
+  }
+  await activate(detailTab);
+  if (selectionChanged && window.matchMedia("(max-width: 790px)").matches) {
+    heading.focus({ preventScroll: true });
+    detail.scrollIntoView({ block: "start" });
+  }
+}
+
+async function renderHistory(id, container) {
   const history = node("ol", undefined, "history");
   history.append(node("li", "กำลังอ่าน Event…"));
-  detail.append(node("h3", "ประวัติธุรกรรม"), history);
+  container.append(node("h3", "ประวัติธุรกรรม"), node("p", "รายการล่าสุดก่อน · วันเวลาตามเครื่องของคุณ", "muted"), history);
   try {
     const jobTopic = "0x" + id.toString(16).padStart(64, "0");
     const logs = await reader.runner.getLogs({
@@ -439,7 +557,7 @@ async function renderDetail() {
       toBlock: "latest",
       topics: [null, jobTopic],
     });
-    logs.sort((a, b) => a.blockNumber - b.blockNumber || a.index - b.index);
+    logs.sort((a, b) => b.blockNumber - a.blockNumber || b.index - a.index);
     const blocks = new Map();
     await Promise.all([...new Set(logs.map((log) => log.blockHash))].map(async (hash) => {
       const block = await reader.runner.getBlock(hash);
@@ -447,41 +565,51 @@ async function renderDetail() {
     }));
     history.replaceChildren();
     if (!logs.length) history.append(node("li", "ไม่พบธุรกรรมของงานนี้"));
-    for (const log of logs) {
-      const parsed = reader.interface.parseLog(log);
-      if (!parsed) continue;
-      const item = node("li", describeLog(parsed));
-      const timestamp = blocks.get(log.blockHash);
-      const meta = node("small", "Block " + log.blockNumber + " · ");
-      if (timestamp !== undefined) {
-        const time = node("time", localDate(timestamp));
-        time.dateTime = new Date(timestamp * 1000).toISOString();
-        meta.append(time, " · เวลาเครื่อง");
-      }
-      const hash = node("code", log.transactionHash, "mono");
-      const copy = node("button", "คัดลอก Hash", "secondary copy");
-      copy.type = "button";
-      copy.addEventListener("click", async () => {
-        try {
-          await navigator.clipboard.writeText(log.transactionHash);
-          copy.textContent = "คัดลอกแล้ว";
-          notice("คัดลอก Transaction Hash แล้ว");
-        } catch {
-          notice("คัดลอกอัตโนมัติไม่ได้ กรุณาเลือกข้อความ Hash", true);
+    let shown = 0;
+    const more = actionButton("แสดงรายการก่อนหน้า", showPage, "secondary history-more");
+    function showPage() {
+      const next = logs.slice(shown, shown + 20);
+      shown += next.length;
+      for (const log of next) {
+        const parsed = reader.interface.parseLog(log);
+        if (!parsed) continue;
+        const item = node("li", describeLog(parsed));
+        const timestamp = blocks.get(log.blockHash);
+        const meta = node("small", "Block " + log.blockNumber + " · ");
+        if (timestamp !== undefined) {
+          const time = node("time", localDate(timestamp));
+          time.dateTime = new Date(timestamp * 1000).toISOString();
+          meta.append(time, " · เวลาเครื่อง");
         }
-      });
-      const transaction = node("div", undefined, "transaction");
-      transaction.append(hash, copy);
-      if (config.mode === "sepolia") {
-        const explorer = node("a", "Etherscan");
-        explorer.href = "https://sepolia.etherscan.io/tx/" + log.transactionHash;
-        explorer.target = "_blank";
-        explorer.rel = "noopener noreferrer";
-        transaction.append(explorer);
+        const hash = node("code", log.transactionHash, "mono");
+        hash.title = log.transactionHash;
+        const copy = node("button", "คัดลอก Hash", "secondary copy");
+        copy.type = "button";
+        copy.addEventListener("click", async () => {
+          try {
+            await navigator.clipboard.writeText(log.transactionHash);
+            copy.textContent = "คัดลอกแล้ว";
+            notice("คัดลอก Transaction Hash แล้ว");
+          } catch {
+            notice("คัดลอกอัตโนมัติไม่ได้ กรุณาเลือกข้อความ Hash", true);
+          }
+        });
+        const transaction = node("div", undefined, "transaction");
+        transaction.append(hash, copy);
+        if (config.mode === "sepolia") {
+          const explorer = node("a", "Etherscan");
+          explorer.href = "https://sepolia.etherscan.io/tx/" + log.transactionHash;
+          explorer.target = "_blank";
+          explorer.rel = "noopener noreferrer";
+          transaction.append(explorer);
+        }
+        item.append(meta, transaction);
+        history.append(item);
       }
-      item.append(meta, transaction);
-      history.append(item);
+      more.hidden = shown >= logs.length;
     }
+    showPage();
+    container.append(more);
   } catch {
     history.replaceChildren(node("li", "อ่านประวัติไม่ได้ กรุณากดรีเฟรช"));
   }
@@ -593,8 +721,36 @@ async function init() {
   const response = await fetch("/config", { cache: "no-store" });
   if (!response.ok) throw new Error("โหลดข้อมูล Contract ไม่สำเร็จ");
   config = await response.json();
+  isV2 = config.contractVersion === 2;
+  if (isV2) {
+    setupMilestoneForm();
+    statuses[0] = "รอรับข้อตกลง";
+    statuses.push("รอฝากเงิน", "รอแก้ไข");
+    statusClasses.push("accepted", "revision");
+    jobFilter.querySelector('option[value="0"]').textContent = statuses[0];
+    for (const value of [6, 7]) {
+      const option = node("option", statuses[value]);
+      option.value = String(value);
+      jobFilter.append(option);
+    }
+    $("create-hint").textContent = "กำหนดขอบเขต ค่าจ้าง กำหนดส่ง และรอบแก้ของแต่ละงวด";
+    const steps = $("job-guide").querySelectorAll("li");
+    steps[0].querySelector("span").textContent = "ผู้ว่าจ้างกำหนดข้อตกลงและรายงวด";
+    steps[1].querySelector("strong").textContent = "รับงานและฝากเงิน";
+    steps[1].querySelector("span").textContent = "ฟรีแลนซ์ยืนยัน ผู้ว่าจ้างฝากครบทุกงวด";
+    steps[2].querySelector("span").textContent = "ส่งผลงานและแก้ไขตามรอบที่ตกลง";
+    steps[3].querySelector("span").textContent = "อนุมัติและจ่ายค่าจ้างทีละงวด";
+  }
   $("build-version").textContent = "Build " + buildId + " · server " + (config.buildId || "ไม่ระบุเวอร์ชัน");
   await verifyBuild();
+  const navigation = $("contract-navigation");
+  navigation.hidden = false;
+  navigation.append(document.createTextNode(isV2 ? "Escrow V2 · รับงาน / ส่งแก้ / Milestones" : "Escrow V1 · จ่ายครั้งเดียว"));
+  if (config.otherVersionUrl) {
+    const link = node("a", isV2 ? "เปิดงานในสัญญา V1 เดิม" : "เปิดงาน Milestone V2");
+    link.href = config.otherVersionUrl;
+    navigation.append(link);
+  }
   $("network-label").textContent = config.networkName + " · Chain ID " + config.chainId;
   $("scope").textContent = config.mode === "sepolia"
     ? "Sepolia Testnet · ETH ทดสอบ · เก็บรายการบนเชน"
@@ -644,6 +800,7 @@ async function init() {
   createDialog.addEventListener("cancel", (event) => {
     if (busy) event.preventDefault();
   });
+  jobSearch.addEventListener("input", renderList);
   jobFilter.addEventListener("change", () => {
     const job = jobs.find(({ id }) => id === selectedId);
     if (job && jobFilter.value !== "all" && job.data.status.toString() !== jobFilter.value) {
@@ -684,6 +841,12 @@ async function init() {
       if (freelancer === "0x0000000000000000000000000000000000000000") {
         throw new Error("Wallet ฟรีแลนซ์ต้องไม่ใช่ Zero Address");
       }
+      if (isV2) {
+        const inputs = readMilestoneInputs(form, limit);
+        const balance = await reader.runner.getBalance(await contract.runner.getAddress());
+        if (balance === 0n) throw Object.assign(new Error("insufficient funds"), { code: "INSUFFICIENT_FUNDS", rpcMethod: "eth_getBalance" });
+        return contract.createJob(freelancer, title, details, inputs);
+      }
       try { fee = parseEther(form.elements.fee.value.trim()); }
       catch { throw new Error("กรอกค่าจ้างเป็น ETH เช่น 0.50"); }
       if (fee <= 0n) throw new Error("ค่าจ้างต้องมากกว่า 0 ETH");
@@ -704,6 +867,7 @@ async function init() {
       form.reset();
       createDialog.close();
       jobFilter.value = "all";
+      jobSearch.value = "";
       selectedId = creation.args.jobId;
     });
   });

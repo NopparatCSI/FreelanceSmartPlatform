@@ -2,6 +2,7 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const http = require("node:http");
 const { Contract, ContractFactory, formatEther } = require("ethers");
+const { artifactPath, contractVersion } = require("./contract-version.cjs");
 const { chainId, confirmedRoles, makeProvider, manifestPath, verifyChain } = require("./sepolia.cjs");
 
 async function registerDeployment(provider, plan, hash, filePath = manifestPath) {
@@ -16,8 +17,9 @@ async function registerDeployment(provider, plan, hash, filePath = manifestPath)
   if (await receipt.confirmations() < 2) return null;
   const contract = new Contract(receipt.contractAddress, plan.abi, provider);
   if (await contract.arbiter() !== plan.roles.arbiter) throw new Error("On-chain arbiter differs from the plan");
+  if (plan.contractVersion === 2 && await contract.version() !== 2n) throw new Error("Expected V2 contract");
   const manifest = {
-    chainId, roles: plan.roles, abi: plan.abi, address: receipt.contractAddress,
+    contractVersion: plan.contractVersion ?? 1, chainId, roles: plan.roles, abi: plan.abi, address: receipt.contractAddress,
     deploymentTransaction: tx.hash, deploymentBlock: receipt.blockNumber, deploymentBlockHash: receipt.blockHash,
   };
   await fs.mkdir(path.dirname(filePath), { recursive: true });
@@ -38,10 +40,9 @@ async function waitForWalletDeployment(host, port) {
   const origin = "http://" + host + ":" + port;
   try {
     await verifyChain(provider);
-    const { abi, bytecode } = JSON.parse(await fs.readFile(path.join(
-      root, "artifacts/contracts/FreelanceEscrow.sol/FreelanceEscrow.json"), "utf8"));
+    const { abi, bytecode } = JSON.parse(await fs.readFile(artifactPath, "utf8"));
     const { data } = await new ContractFactory(abi, bytecode).getDeployTransaction(roles.arbiter);
-    const plan = { roles, data, abi };
+    const plan = { roles, data, abi, contractVersion };
     const balances = Object.fromEntries(await Promise.all(Object.entries(roles).map(async ([role, address]) =>
       [role, formatEther(await provider.getBalance(address))]
     )));
@@ -64,7 +65,7 @@ async function waitForWalletDeployment(host, port) {
         if (request.headers.host !== host + ":" + port) return json(403, { error: "Use the exact setup URL" });
         try {
           if (request.method === "GET" && request.url === "/deployment-plan") {
-            return json(200, { chainId, roles, data, balances });
+            return json(200, { chainId, roles, data, balances, contractVersion });
           }
           if (request.method === "POST" && request.url === "/deployment-receipt") {
             if (request.headers.origin !== origin || !request.headers["content-type"]?.startsWith("application/json")) {

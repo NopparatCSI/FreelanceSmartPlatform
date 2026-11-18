@@ -58,6 +58,39 @@ describe("Sepolia deployment attachment", function () {
     }
   });
 
+  it("reattaches to a V2 deployment and verifies its reported version", async function () {
+    const [, freelancer, arbiter] = await ethers.getSigners();
+    const escrow = await ethers.deployContract("FreelanceEscrowV2", [arbiter.address]);
+    const receipt = await escrow.deploymentTransaction().wait();
+    const artifact = await artifacts.readArtifact("FreelanceEscrowV2");
+    const manifest = {
+      contractVersion: 2, chainId: 11155111, address: await escrow.getAddress(), abi: artifact.abi,
+      deploymentBlock: receipt.blockNumber, deploymentBlockHash: receipt.blockHash,
+      deploymentTransaction: receipt.hash,
+      roles: { client: "0x7753139708C1137aC9B75082FA03f3D597223B31",
+        freelancer: "0x7B5ad17248ec3CDDa65d387f0aF9de8D4424F7f9", arbiter: arbiter.address },
+    };
+    const folder = await fs.mkdtemp(path.resolve(".local", "attachment-v2-"));
+    const file = path.join(folder, "manifest.json");
+    const provider = new Proxy(ethers.provider, {
+      get(target, key) {
+        if (key === "send") return (method, args) => method === "eth_chainId" ? "0xaa36a7" : target.send(method, args);
+        const value = Reflect.get(target, key);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    try {
+      await fs.writeFile(file, JSON.stringify(manifest));
+      const config = await loadDeployment(provider, file);
+      assert.equal(config.contractVersion, 2);
+      assert.equal(config.address, manifest.address);
+      assert.equal(config.arbiter, arbiter.address);
+    } finally {
+      await fs.unlink(file);
+      await fs.rmdir(folder);
+    }
+  });
+
   it("reattaches to an existing contract and reads the same job and on-chain log", async function () {
     const [client, freelancer, arbiter] = await ethers.getSigners();
     const escrow = await ethers.deployContract("FreelanceEscrow", [arbiter.address]);

@@ -86,6 +86,7 @@ test("browser verifies direct payment and both dispute outcomes on Ethereum Loca
     const freelancerBefore = await balance(config.accounts.freelancer);
     await transaction(detail.getByRole("button", { name: "อนุมัติและจ่าย 0.5 ETH" }));
     await detail.getByText("จ่ายแล้ว", { exact: true }).waitFor();
+    await detail.getByRole("tab", { name: "ประวัติ", exact: true }).click();
     await detail.getByText("จ่าย 0.5 ETH ให้ " + config.accounts.freelancer, { exact: false }).waitFor();
     const paidHash = (await summary.textContent()).match(/0x[0-9a-f]{64}/i)[0];
     const paidEvent = detail.locator(".history li").filter({ hasText: paidHash });
@@ -98,6 +99,7 @@ test("browser verifies direct payment and both dispute outcomes on Ethereum Loca
     assert.equal(await detail.getByRole("button", { name: /อนุมัติและจ่าย/ }).count(), 0);
 
     await create("ทดสอบคืนเงิน");
+    await detail.locator("summary").filter({ hasText: "มีปัญหากับงาน?" }).click();
     await detail.getByLabel("เหตุผลหรือ Hash หลักฐาน").fill("ตกลงยุติงาน");
     await transaction(detail.getByRole("button", { name: "เปิดข้อพิพาท" }));
     await detail.getByText("มีข้อพิพาท", { exact: true }).waitFor();
@@ -110,15 +112,18 @@ test("browser verifies direct payment and both dispute outcomes on Ethereum Loca
     const clientBefore = await balance(config.accounts.client);
     await transaction(detail.getByRole("button", { name: "คืนให้ผู้ว่าจ้าง" }));
     await detail.getByText("คืนเงินแล้ว", { exact: true }).waitFor();
+    await detail.getByText("คู่สัญญาตกลงยุติงานก่อนส่งมอบ", { exact: true }).waitFor();
+    await detail.getByRole("tab", { name: "ประวัติ", exact: true }).click();
     await detail.getByText("คืน 0.5 ETH ให้ " + config.accounts.client, { exact: false }).waitFor();
     assert.equal(await balance(config.accounts.client), clientBefore + 500000000000000000n);
-    await detail.getByText("คู่สัญญาตกลงยุติงานก่อนส่งมอบ", { exact: true }).waitFor();
+    await detail.getByRole("tab", { name: "ดำเนินงาน", exact: true }).click();
     await shot("06-dispute-refunded", detail);
 
     await create("ทดสอบผู้ตัดสินสั่งจ่าย");
     await role.selectOption("freelancer");
     await detail.getByLabel("URL หรือ Hash ผลงาน").fill("https://example.com/delivered");
     await transaction(detail.getByRole("button", { name: "บันทึกส่งงาน" }));
+    await detail.locator("summary").filter({ hasText: "มีปัญหากับงาน?" }).click();
     await detail.getByLabel("เหตุผลหรือ Hash หลักฐาน").fill("ส่งไฟล์แล้ว รอชำระค่าจ้าง");
     await transaction(detail.getByRole("button", { name: "เปิดข้อพิพาท" }));
     await role.selectOption("client");
@@ -128,8 +133,10 @@ test("browser verifies direct payment and both dispute outcomes on Ethereum Loca
     await detail.getByLabel("เหตุผลคำตัดสิน").fill("ตรวจหลักฐานแล้วว่าฟรีแลนซ์ส่งมอบครบ");
     const disputedPayBefore = await balance(config.accounts.freelancer);
     await transaction(detail.getByRole("button", { name: "จ่ายให้ฟรีแลนซ์" }));
+    await detail.getByRole("tab", { name: "ประวัติ", exact: true }).click();
     await detail.getByText("ผู้ตัดสินสั่งจ่ายค่าจ้าง").waitFor();
     assert.equal(await balance(config.accounts.freelancer), disputedPayBefore + 500000000000000000n);
+    await detail.getByRole("tab", { name: "ดำเนินงาน", exact: true }).click();
     await detail.getByText("ตรวจหลักฐานแล้วว่าฟรีแลนซ์ส่งมอบครบ", { exact: true }).waitFor();
     await shot("05-dispute-paid", detail);
     assert.equal(await balance(config.address), 0n);
@@ -139,6 +146,7 @@ test("browser verifies direct payment and both dispute outcomes on Ethereum Loca
     await page.setViewportSize({ width: 375, height: 850 });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     await shot("08-mobile");
+    await detail.getByRole("button", { name: "← รายการงาน", exact: true }).click();
     await page.locator("#job-filter").selectOption("5");
     assert.equal(await page.locator(".job-button").count(), 1);
     await page.locator(".job-button").click();

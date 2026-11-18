@@ -18,6 +18,10 @@ const env = {
   HARDHAT_DISABLE_TELEMETRY: "1",
 };
 const args = process.argv.slice(2);
+if (args[0] === "--v2") {
+  env.ESCROW_VERSION = "2";
+  args.shift();
+}
 if (args[0] === "--demo" || args[0] === "--local") {
   env.ESCROW_MODE = args[0] === "--demo" ? "demo" : "wallet";
   args.shift();

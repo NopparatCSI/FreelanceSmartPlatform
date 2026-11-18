@@ -61,6 +61,10 @@ async function init() {
   const response = await fetch("/deployment-plan", { cache: "no-store" });
   if (!response.ok) throw new Error("โหลดแผน Deploy ไม่สำเร็จ");
   plan = await response.json();
+  if (plan.contractVersion === 2) {
+    document.querySelector("h1").textContent = "ตั้งค่า Escrow V2";
+    document.querySelector(".lead").textContent = "ยอมรับข้อตกลง ส่งแก้ และจ่ายค่าจ้างราย Milestone";
+  }
   if (plan.chainId !== 11155111) throw new Error("แผน Deploy ต้องใช้ Sepolia");
   storageKey = "escrow-sepolia-deployment:" + keccak256(plan.data);
   const names = { client: "ผู้ว่าจ้าง", freelancer: "ฟรีแลนซ์", arbiter: "ผู้ตัดสิน" };

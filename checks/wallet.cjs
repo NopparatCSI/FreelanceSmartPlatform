@@ -80,10 +80,17 @@ test("wallet-only mode rejects node signing and accepts an EIP-1193 wallet's sig
     await page.locator('[name="title"]').fill("ทดสอบลายเซ็นจาก Wallet");
     await page.locator('[name="details"]').fill("ส่งธุรกรรมที่ลงนามด้วยบัญชี Hardhat ผ่านโหมด Wallet");
     await page.locator('[name="freelancer"]').fill("0x70997970C51812dc3A010C7d01b50e0d17dc79C8");
-    await page.locator('[name="fee"]').fill("0.5");
     const deadline = new Date(Date.now() + 86400000);
     deadline.setMinutes(deadline.getMinutes() - deadline.getTimezoneOffset());
-    await page.locator('[name="deadline"]').fill(deadline.toISOString().slice(0, 16));
+    if (config.contractVersion === 2) {
+      await page.locator('[name="milestoneTitle"]').fill("งานออกแบบ");
+      await page.locator('[name="milestoneScope"]').fill("ส่งไฟล์หน้าเว็บ");
+      await page.locator('[name="milestoneAmount"]').fill("0.5");
+      await page.locator('[name="milestoneDeadline"]').fill(deadline.toISOString().slice(0, 16));
+    } else {
+      await page.locator('[name="fee"]').fill("0.5");
+      await page.locator('[name="deadline"]').fill(deadline.toISOString().slice(0, 16));
+    }
     const create = page.getByRole("button", { name: "สร้างข้อตกลง", exact: true });
     const before = await rpc.getTransactionCount(client.address);
     await create.click();
@@ -108,6 +115,7 @@ test("wallet-only mode rejects node signing and accepts an EIP-1193 wallet's sig
     await page.waitForFunction(() => document.querySelector("#feedback").textContent.startsWith("ยืนยันธุรกรรมแล้ว"));
     assert.ok(signedHash);
     await page.locator("#job-detail").getByRole("heading", { name: /ทดสอบลายเซ็นจาก Wallet/ }).waitFor();
+    await page.getByRole("tab", { name: "ประวัติ", exact: true }).click();
     await page.locator(".history code").filter({ hasText: signedHash }).waitFor();
     const receipt = await rpc.getTransactionReceipt(signedHash);
     assert.equal(receipt.status, 1);

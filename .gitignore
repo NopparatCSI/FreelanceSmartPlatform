@@ -1,9 +1,31 @@
-node_modules/
-.npm-cache/
-artifacts/
-cache/
+# Dependencies and local tool caches
+/node_modules/
+/.npm-cache/
+/.local/
+
+# Generated contract artifacts and static site output
+/artifacts/
+/cache/
+/dist-pages/
+
+# Local secrets (keep a shareable example if one is added)
 .env
-.local/
 .env.*
 !/.env.example
-/dist-pages/
+
+# Generated screenshots, recordings, and test reports
+/evidence/
+/screenshots/
+/recordings/
+/test-results/
+/playwright-report/
+/coverage/
+
+# Logs and editor / operating system files
+*.log
+.vscode/
+.idea/
+*.code-workspace
+.DS_Store
+Thumbs.db
+Desktop.ini

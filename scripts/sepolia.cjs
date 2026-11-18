@@ -2,10 +2,11 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const { JsonRpcProvider, Contract, getAddress, ZeroAddress } = require("ethers");
 
+const { contractVersion, manifestName } = require("./contract-version.cjs");
 const chainId = 11155111;
 const name = "Sepolia";
 const root = path.resolve(__dirname, "..");
-const manifestPath = path.join(root, "deployments", "sepolia.json");
+const manifestPath = path.join(root, "deployments", manifestName);
 const clientAddress = "0x7753139708c1137ac9b75082fa03f3d597223b31";
 const freelancerAddress = "0x7B5ad17248ec3CDDa65d387f0aF9de8D4424F7f9";
 const arbiterAddress = "0x99eE1CB12249E5013c0c5CC090d333e75B53858E";
@@ -52,13 +53,16 @@ async function loadDeployment(provider, filePath = manifestPath) {
   let manifest;
   try { manifest = JSON.parse(await fs.readFile(filePath, "utf8")); }
   catch (error) {
-    if (error.code === "ENOENT") throw new Error("No Sepolia deployment. Verify roles and run npm run deploy:sepolia first.");
+    if (error.code === "ENOENT") throw new Error("No Escrow V" + contractVersion + " deployment. Run npm run " + (contractVersion === 2 ? "setup:sepolia:v2" : "setup:sepolia") + " first.");
     throw error;
   }
   if (manifest.chainId !== chainId || !Array.isArray(manifest.abi) ||
       !Number.isSafeInteger(manifest.deploymentBlock) || manifest.deploymentBlock < 1) {
     throw new Error("Invalid Sepolia deployment manifest");
   }
+  const version = manifest.contractVersion ?? 1;
+  if (version !== 1 && version !== 2) throw new Error("Unsupported Escrow contract version");
+  if (filePath === manifestPath && version !== contractVersion) throw new Error("Deployment manifest belongs to a different Contract version");
   const roles = validateRoles(manifest.roles);
   const address = getAddress(manifest.address);
   await verifyChain(provider);
@@ -72,9 +76,10 @@ async function loadDeployment(provider, filePath = manifestPath) {
     throw new Error("Sepolia deployment receipt, block or bytecode failed verification");
   }
   const contract = new Contract(address, manifest.abi, provider);
+  if (version === 2 && await contract.version() !== 2n) throw new Error("Expected an Escrow V2 contract");
   if (await contract.arbiter() !== roles.arbiter) throw new Error("Deployed contract has a different arbiter");
   return {
-    address, chainId, networkName: name, abi: manifest.abi, roles,
+    address, chainId, networkName: name, contractVersion: version, abi: manifest.abi, roles,
     arbiter: roles.arbiter, deploymentBlock: manifest.deploymentBlock,
     deploymentBlockHash: manifest.deploymentBlockHash,
   };

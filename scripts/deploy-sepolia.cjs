@@ -1,6 +1,7 @@
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const { Wallet, ContractFactory, formatEther, getCreateAddress, Transaction } = require("ethers");
+const { artifactPath, contractVersion } = require("./contract-version.cjs");
 const { chainId, confirmedRoles, makeProvider, manifestPath, verifyChain } = require("./sepolia.cjs");
 
 async function main() {
@@ -23,7 +24,7 @@ async function main() {
     }
     if (!process.env.SEPOLIA_DEPLOYER_KEY) throw new Error("Set SEPOLIA_DEPLOYER_KEY locally using a dedicated funded test account");
     const wallet = new Wallet(process.env.SEPOLIA_DEPLOYER_KEY, provider);
-    const abiPath = path.join(__dirname, "../artifacts/contracts/FreelanceEscrow.sol/FreelanceEscrow.json");
+    const abiPath = artifactPath;
     const { abi, bytecode } = JSON.parse(await fs.readFile(abiPath, "utf8"));
     const factory = new ContractFactory(abi, bytecode, wallet);
     const tx = await factory.getDeployTransaction(roles.arbiter);
@@ -39,7 +40,7 @@ async function main() {
     const transaction = Transaction.from(signed);
     if (transaction.chainId !== BigInt(chainId)) throw new Error("Signed deployment has the wrong chain ID");
     const pending = {
-      chainId, roles, abi, address: getCreateAddress({ from: wallet.address, nonce: transaction.nonce }),
+      contractVersion, chainId, roles, abi, address: getCreateAddress({ from: wallet.address, nonce: transaction.nonce }),
       deploymentTransaction: transaction.hash, state: "pending",
     };
     await fs.mkdir(path.dirname(manifestPath), { recursive: true });
